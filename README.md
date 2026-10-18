@@ -1,13 +1,70 @@
 # oopdbmsc
 
-`oopdbmsc` is an embedded C99 library for the
-[OOPDBMS](https://github.com/KrzysztofMarciniak/oopdbms) object-oriented
-database format and command language. It links the database engine directly;
-it does not start the `oopdbms` executable.
+`oopdbmsc` is an embedded, POSIX C99 library for
+[OOPDBMS](https://github.com/KrzysztofMarciniak/oopdbms), an object-oriented
+NoSQL database. Link the library into a C program, open an `.oopdb` file, and
+execute OOPDBMS commands directly—no database server or `oopdbms` subprocess
+is required.
 
-The public API is in [`include/oopdbms/oopdbms.h`](include/oopdbms/oopdbms.h).
-It opens a database, executes any documented OOPDBMS command as command text,
-and returns the command output in an owned result object.
+## Start here
+
+Build the library and run a narrated, end-to-end example:
+
+```sh
+make
+make quick_start
+```
+
+`make quick_start` builds and runs [`examples/main.c`](examples/main.c). It
+recreates `build/quick-start.oopdb`, then shows how to connect, define a
+schema, create objects, query and update them, call a stored function, inspect
+metadata, and close the database.
+
+Choose a different throwaway database path with:
+
+```sh
+make quick_start QUICK_START_DB=/tmp/my-demo.oopdb
+```
+
+> `quick_start` removes its target database before running. Do not set
+> `QUICK_START_DB` to a database whose contents you want to keep.
+
+## Add it to a C program
+
+Install the library and its public header:
+
+```sh
+make install PREFIX=/usr/local
+```
+
+Compile an application against the installed shared library:
+
+```sh
+cc -std=c99 -I/usr/local/include app.c -L/usr/local/lib -loopdbmsc \
+  -Wl,-rpath,/usr/local/lib -o app
+```
+
+For static linking, name the archive directly:
+
+```sh
+cc -std=c99 -I/usr/local/include app.c /usr/local/lib/liboopdbmsc.a -o app
+```
+
+The complete API is declared in
+[`include/oopdbms/oopdbms.h`](include/oopdbms/oopdbms.h).
+
+## Connect to a database
+
+`oopdbms_open(path, flags, &database)` returns an opaque handle. Always close
+a successful handle with `oopdbms_close(database)`.
+
+| Situation | Call | Behavior |
+| --- | --- | --- |
+| Create when missing, otherwise open existing data | `oopdbms_open(path, OOPDBMS_OPEN_CREATE, &database)` | Initializes a new database only when `path` does not exist. It **does not** recreate an existing database. |
+| Open existing data | `oopdbms_open(path, 0, &database)` | Fails with `OOPDBMS_ERROR_NOT_FOUND` if the file does not exist. Use this for normal application startup after initialization. |
+| Inspect existing data without writes | `oopdbms_open(path, OOPDBMS_OPEN_READ_ONLY, &database)` | Opens an existing database and rejects mutating commands. |
+
+`OOPDBMS_OPEN_CREATE` and `OOPDBMS_OPEN_READ_ONLY` cannot be combined.
 
 ```c
 #include <oopdbms/oopdbms.h>
@@ -15,74 +72,209 @@ and returns the command output in an owned result object.
 
 int main(void) {
         oopdbms_database *database;
-        oopdbms_result *result;
+        oopdbms_status status;
 
-        if (oopdbms_open("example.oopdb", OOPDBMS_OPEN_CREATE, &database) !=
-            OOPDBMS_OK) {
+        status = oopdbms_open("library.oopdb", 0, &database);
+        if (status != OOPDBMS_OK) {
+                fprintf(stderr, "open failed: %s\n",
+                        oopdbms_status_string(status));
                 return 1;
         }
-        if (oopdbms_execute(database,
-                            "CREATE CLASS Person (name text, age integer)",
-                            &result) == OOPDBMS_OK) {
-                printf("%s", oopdbms_result_output(result));
-                oopdbms_result_free(result);
-        }
+
+        /* Use database here. */
         oopdbms_close(database);
         return 0;
 }
 ```
 
-Build both library artifacts and run the API tests:
+To initialize a new application database, replace `0` with
+`OOPDBMS_OPEN_CREATE`. Subsequent launches should normally use `0` so a typo
+in the database path does not silently create a separate database.
 
-```sh
-make
-make test
-```
+## Execute commands and read results
 
-Run a complete, fresh database walkthrough:
-
-```sh
-make quick_start
-```
-
-This compiles and runs [`examples/main.c`](examples/main.c), recreating
-`build/quick-start.oopdb` each time. Use another path with
-`make quick_start QUICK_START_DB=/path/to/demo.oopdb`.
-The walkthrough prints the corresponding public API call and explains how to
-open a database, define schemas, insert/query/update objects, call a stored
-function, inspect metadata, and close the handle. Read the source alongside
-the output to adapt the same lifecycle to an application.
-
-### Reopen an existing database
-
-`make quick_start` deliberately deletes its demonstration database before
-running. Applications retain data by opening the same path **without**
-`OOPDBMS_OPEN_CREATE`:
+Pass one complete OOPDBMS command string to `oopdbms_execute`. On success, the
+function allocates a result that the caller must release with
+`oopdbms_result_free`.
 
 ```c
-oopdbms_database *database;
+static int run(oopdbms_database *database, const char *command) {
+        oopdbms_result *result;
+        oopdbms_status status;
 
-if (oopdbms_open("example.oopdb", 0, &database) != OOPDBMS_OK) {
-        /* The file is missing, unreadable, or not a valid OOPDBMS database. */
+        status = oopdbms_execute(database, command, &result);
+        if (status != OOPDBMS_OK) {
+                fprintf(stderr, "%s: %s\n", command,
+                        oopdbms_status_string(status));
+                return 0;
+        }
+
+        printf("%s", oopdbms_result_output(result));
+        oopdbms_result_free(result);
         return 1;
 }
 
-/* Execute commands, then release the handle. */
-oopdbms_close(database);
+/* For a newly opened database: */
+run(database, "CREATE CLASS Person (name text, age integer)");
+run(database, "NEW Person (name = \"Ada\", age = 36)");
+run(database, "FIND Person WHERE age >= 18");
 ```
 
-Use `OOPDBMS_OPEN_CREATE` only when a missing path should be initialized as a
-new database. To open existing data while preventing mutations, pass
-`OOPDBMS_OPEN_READ_ONLY` instead.
+The command text uses the same quoting rules as the upstream command-line
+tool. Quote text values with `"..."`; use backslash escapes when needed.
 
-Install headers plus `liboopdbmsc.a` and `liboopdbmsc.so`:
+### Result kinds and output
+
+Every successful command returns a result, including commands that do not
+print anything. `oopdbms_result_output(result)` is a NUL-terminated,
+caller-read-only text buffer and `oopdbms_result_output_size(result)` excludes
+its NUL terminator.
+
+| Result kind | Produced by | Output |
+| --- | --- | --- |
+| `OOPDBMS_RESULT_NONE` | Schema changes, `SET`, `DELETE`, function definition changes | Empty |
+| `OOPDBMS_RESULT_OBJECTS` | `NEW`, `FIND` | New object identity or matching object records |
+| `OOPDBMS_RESULT_VALUE` | `CALL` | The returned scalar value |
+| `OOPDBMS_RESULT_METADATA` | `LIST CLASSES`, `LIST INTERFACES`, `DESCRIBE` | Schema or database metadata |
+
+Use `oopdbms_result_kind_get(result)` when output category matters. The output
+format is text intended for display; keep the result alive while reading it,
+then call `oopdbms_result_free(result)`.
+
+## Command reference
+
+Use these commands as the `command` argument of `oopdbms_execute`.
+
+### Define and change schemas
+
+```text
+CREATE CLASS <name> [EXTENDS <class>] [IMPLEMENTS <interface>[, ...]] (<field> <type>[, ...])
+DROP CLASS <name>
+ALTER CLASS <name> ADD FIELD <field> <type>
+ALTER CLASS <name> DROP FIELD <field>
+ALTER CLASS <name> RENAME FIELD <old> <new>
+ALTER CLASS <name> RENAME <new>
+ALTER CLASS <name> EXTENDS <class>
+ALTER CLASS <name> IMPLEMENTS <interface>
+
+CREATE INTERFACE <name> (<field> <type>[, ...])
+DROP INTERFACE <name>
+```
+
+Example:
+
+```c
+run(database, "CREATE INTERFACE Named (name text)");
+run(database, "CREATE CLASS Person IMPLEMENTS Named (name text, age integer)");
+run(database, "CREATE CLASS Employee EXTENDS Person (salary float)");
+```
+
+### Store and retrieve objects
+
+```text
+NEW <class> (<field> = <value>[, ...])
+FIND <class> [WHERE <condition>]
+SET <class> <id> (<field> = <value>[, ...])
+DELETE <class> <id>
+```
+
+Example:
+
+```c
+run(database, "NEW Person (name = \"Ada Lovelace\", age = 36)");
+run(database, "FIND Person WHERE age >= 18");
+run(database, "SET Person 1 (age = 37)");
+run(database, "DELETE Person 1");
+```
+
+### Define and call functions
+
+```text
+CREATE FUNCTION <class>.<name> (<arg> <type>[, ...]) RETURNS <type> AS <expression>
+DROP FUNCTION <class>.<name>
+CALL <class>.<name> (<value>[, ...]) ON <id>
+```
+
+Example:
+
+```c
+run(database,
+    "CREATE FUNCTION Person.years_until (target integer) "
+    "RETURNS integer AS target - age");
+run(database, "CALL Person.years_until (100) ON 1");
+```
+
+### Inspect a database
+
+```text
+LIST CLASSES
+LIST INTERFACES
+DESCRIBE <class>
+```
+
+Example:
+
+```c
+run(database, "DESCRIBE Person");
+run(database, "LIST CLASSES");
+run(database, "LIST INTERFACES");
+```
+
+### Values and types
+
+| Type | Command value example |
+| --- | --- |
+| `integer` | `36` |
+| `float` | `19.5` |
+| `text` | `"Ada Lovelace"` |
+| `bool` | `true` or `false` |
+| `pointer <class>` | `Person.1` |
+
+A `pointer <class>` stores a reference to an object of that class. For
+example, after creating `Person.1`, a `Book` can use `author = Person.1`.
+
+## Errors and ownership
+
+Every fallible API call returns `oopdbms_status`. Convert it to a stable
+display string with `oopdbms_status_string(status)`.
+
+| Status | Meaning |
+| --- | --- |
+| `OOPDBMS_ERROR_INVALID_ARGUMENT` | A required pointer, path, or flag combination is invalid. |
+| `OOPDBMS_ERROR_OUT_OF_MEMORY` | Allocation failed. |
+| `OOPDBMS_ERROR_NOT_FOUND` | An existing database was requested but the path is absent. |
+| `OOPDBMS_ERROR_IO` | A file or result-capture operation failed. |
+| `OOPDBMS_ERROR_DATABASE` | The existing file is not a valid supported OOPDBMS database. |
+| `OOPDBMS_ERROR_TOKENIZE` / `OOPDBMS_ERROR_PARSE` | The command string is not valid OOPDBMS syntax. |
+| `OOPDBMS_ERROR_EXECUTE` | A syntactically valid command could not be applied. |
+
+Ownership rules:
+
+- The library owns the opaque `oopdbms_database`; release it with
+  `oopdbms_close`.
+- The library owns each successful `oopdbms_result`; release it with
+  `oopdbms_result_free`.
+- Result output is valid until its result is freed.
+- `oopdbms_close(NULL)` and `oopdbms_result_free(NULL)` are safe.
+
+## Constraints
+
+- The current build targets POSIX C99 systems.
+- A database handle is not safe for simultaneous use from multiple threads.
+- Calls to `oopdbms_execute` must be serialized within a process because the
+  embedded engine captures command output through the process stdout stream.
+- There is no server, connection string, or network listener: the `path`
+  passed to `oopdbms_open` is the database.
+
+## Development
 
 ```sh
-make install PREFIX=/usr/local
+make          # Build liboopdbmsc.a and liboopdbmsc.so
+make test     # Run the API suite against both artifacts
+make clean    # Remove generated root build artifacts
 ```
 
-The embedded engine is vendored at
-[`vendor/oopdbms`](vendor/oopdbms) from upstream commit
-`f067881eb52b7abfafa474b6edad908b927b11f0`. It remains covered by its
+The engine is vendored at [`vendor/oopdbms`](vendor/oopdbms) from upstream
+commit `f067881eb52b7abfafa474b6edad908b927b11f0`. It remains covered by its
 BSD-3-Clause license; see [`vendor/oopdbms/LICENSE`](vendor/oopdbms/LICENSE)
 and [`vendor/oopdbms/UPSTREAM.md`](vendor/oopdbms/UPSTREAM.md).
