@@ -6,6 +6,10 @@ NoSQL database. Link the library into a C program, open an `.oopdb` file, and
 execute OOPDBMS commands directly—no database server or `oopdbms` subprocess
 is required.
 
+## Integration Example
+
+**An example usage of this tool:** [example-login-c-stack](https://github.com/KrzysztofMarciniak/example-login-c-stack).
+
 ## Start here
 
 Build the library and run a narrated, end-to-end example:
