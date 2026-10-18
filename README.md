@@ -53,6 +53,28 @@ open a database, define schemas, insert/query/update objects, call a stored
 function, inspect metadata, and close the handle. Read the source alongside
 the output to adapt the same lifecycle to an application.
 
+### Reopen an existing database
+
+`make quick_start` deliberately deletes its demonstration database before
+running. Applications retain data by opening the same path **without**
+`OOPDBMS_OPEN_CREATE`:
+
+```c
+oopdbms_database *database;
+
+if (oopdbms_open("example.oopdb", 0, &database) != OOPDBMS_OK) {
+        /* The file is missing, unreadable, or not a valid OOPDBMS database. */
+        return 1;
+}
+
+/* Execute commands, then release the handle. */
+oopdbms_close(database);
+```
+
+Use `OOPDBMS_OPEN_CREATE` only when a missing path should be initialized as a
+new database. To open existing data while preventing mutations, pass
+`OOPDBMS_OPEN_READ_ONLY` instead.
+
 Install headers plus `liboopdbmsc.a` and `liboopdbmsc.so`:
 
 ```sh

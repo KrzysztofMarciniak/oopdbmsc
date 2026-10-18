@@ -77,10 +77,11 @@ int main(int argc, char **argv) {
                     execute(database, "FIND Book");
         }
         if (success) {
-                printf("\n5. Inspect the schema and database metadata\n");
+                printf("\n5. Inspect schemas and database metadata\n");
                 success =
-                    execute(database, "DESCRIBE Person") &&
-                    execute(database, "LIST CLASSES");
+                    execute(database, "DESCRIBE Book") &&
+                    execute(database, "LIST CLASSES") &&
+                    execute(database, "LIST INTERFACES");
         }
 
         printf("\n6. Close the database\n");
