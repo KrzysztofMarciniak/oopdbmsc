@@ -35,6 +35,17 @@ make quick_start QUICK_START_DB=/tmp/my-demo.oopdb
 
 ## Add it to a C program
 
+`oopdbmsc` links to the installed OOPDBMS engine library. Build and install
+OOPDBMS first:
+
+```sh
+git clone https://github.com/KrzysztofMarciniak/oopdbms.git
+make -C oopdbms install PREFIX=/usr/local
+```
+
+For a non-system prefix, set `PKG_CONFIG_PATH` to
+`$HOME/.local/lib/pkgconfig` when building `oopdbmsc`.
+
 Install the library and its public header:
 
 ```sh
@@ -45,13 +56,15 @@ Compile an application against the installed shared library:
 
 ```sh
 cc -std=c99 -I/usr/local/include app.c -L/usr/local/lib -loopdbmsc \
+  $(pkg-config --libs oopdbms-engine) \
   -Wl,-rpath,/usr/local/lib -o app
 ```
 
 For static linking, name the archive directly:
 
 ```sh
-cc -std=c99 -I/usr/local/include app.c /usr/local/lib/liboopdbmsc.a -o app
+cc -std=c99 -I/usr/local/include app.c /usr/local/lib/liboopdbmsc.a \
+  $(pkg-config --static --libs oopdbms-engine) -o app
 ```
 
 The complete API is declared in
@@ -278,7 +291,7 @@ make test     # Run the API suite against both artifacts
 make clean    # Remove generated root build artifacts
 ```
 
-The engine is vendored at [`vendor/oopdbms`](vendor/oopdbms) from upstream
-commit `f067881eb52b7abfafa474b6edad908b927b11f0`. It remains covered by its
-BSD-3-Clause license; see [`vendor/oopdbms/LICENSE`](vendor/oopdbms/LICENSE)
-and [`vendor/oopdbms/UPSTREAM.md`](vendor/oopdbms/UPSTREAM.md).
+The build discovers `oopdbms-engine` with pkg-config and compiles only the
+adapter in this repository. Updating OOPDBMS no longer requires copying its
+source into `oopdbmsc`; install the desired OOPDBMS release and rebuild this
+library against its engine package.

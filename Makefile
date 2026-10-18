@@ -3,13 +3,13 @@ AR ?= ar
 INSTALL ?= install
 PREFIX ?= /usr/local
 DESTDIR ?=
+PKG_CONFIG ?= pkg-config
 
 BUILD_DIR := build
 LIB_DIR := $(BUILD_DIR)/lib
 TEST_DIR := $(BUILD_DIR)/tests
 EXAMPLE_DIR := $(BUILD_DIR)/examples
 INCLUDE_DIR := include
-VENDOR_DIR := vendor/oopdbms/src
 LIB_NAME := oopdbmsc
 LIB_STATIC := $(LIB_DIR)/lib$(LIB_NAME).a
 LIB_SONAME := lib$(LIB_NAME).so.0
@@ -18,22 +18,30 @@ LIB_LINK := $(LIB_DIR)/lib$(LIB_NAME).so
 
 WARNINGS := -Wall -Wextra -Wpedantic
 CFLAGS ?= -O2
-CPPFLAGS := -D_POSIX_C_SOURCE=200809L -I$(INCLUDE_DIR) -I$(VENDOR_DIR)
+CPPFLAGS := -D_POSIX_C_SOURCE=200809L -I$(INCLUDE_DIR)
 CFLAGS += -std=c99 $(WARNINGS) -fPIC -fvisibility=hidden
 LDFLAGS ?=
+ENGINE_CFLAGS = $(shell $(PKG_CONFIG) --cflags oopdbms-engine 2>/dev/null)
+ENGINE_LIBS = $(shell $(PKG_CONFIG) --libs oopdbms-engine 2>/dev/null)
+ENGINE_LIBDIR = $(shell $(PKG_CONFIG) --variable=libdir oopdbms-engine 2>/dev/null)
+ENGINE_RPATH = -Wl,-rpath,$(ENGINE_LIBDIR)
 
-VENDOR_SOURCES := $(shell find $(VENDOR_DIR) -type f -name '*.c' \
-	-not -path '$(VENDOR_DIR)/tests/*' -not -path '$(VENDOR_DIR)/main.c')
-SOURCES := src/oopdbms.c $(VENDOR_SOURCES)
+SOURCES := src/oopdbms.c
 OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 STATIC_TEST := $(TEST_DIR)/library-static-test
 SHARED_TEST := $(TEST_DIR)/library-shared-test
 QUICK_START := $(EXAMPLE_DIR)/quick_start
 QUICK_START_DB ?= $(BUILD_DIR)/quick-start.oopdb
 
-.PHONY: all clean test quick_start install uninstall
+.PHONY: all check-engine clean test quick_start install uninstall
 
-all: $(LIB_STATIC) $(LIB_SHARED) $(LIB_LINK)
+all: check-engine $(LIB_STATIC) $(LIB_SHARED) $(LIB_LINK)
+
+check-engine:
+	@$(PKG_CONFIG) --exists oopdbms-engine || { \
+		echo "oopdbms-engine is required; install OOPDBMS with 'make install' first" >&2; \
+		exit 1; \
+	}
 
 $(LIB_STATIC): $(OBJECTS)
 	@mkdir -p $(@D)
@@ -41,33 +49,36 @@ $(LIB_STATIC): $(OBJECTS)
 
 $(LIB_SHARED): $(OBJECTS)
 	@mkdir -p $(@D)
-	$(CC) -shared -Wl,-soname,$(LIB_SONAME) $(LDFLAGS) -o $@ $^
+	$(CC) -shared -Wl,-soname,$(LIB_SONAME) $(LDFLAGS) $(ENGINE_RPATH) \
+		-o $@ $^ $(ENGINE_LIBS)
 
 $(LIB_LINK): $(LIB_SHARED)
 	ln -sf $(LIB_SONAME) $@
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+	$(CC) $(CPPFLAGS) $(ENGINE_CFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 
 $(STATIC_TEST): tests/library_test.c $(LIB_STATIC)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+	$(CC) $(CPPFLAGS) $(ENGINE_CFLAGS) $(CFLAGS) $< $(LIB_STATIC) \
+		$(LDFLAGS) $(ENGINE_RPATH) $(ENGINE_LIBS) -o $@
 
 $(SHARED_TEST): tests/library_test.c $(LIB_LINK)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) \
+	$(CC) $(CPPFLAGS) $(ENGINE_CFLAGS) $(CFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) \
 		-Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS) -o $@
 
-test: $(STATIC_TEST) $(SHARED_TEST)
+test: check-engine $(STATIC_TEST) $(SHARED_TEST)
 	$(STATIC_TEST)
 	$(SHARED_TEST)
 
 $(QUICK_START): examples/main.c $(LIB_STATIC)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+	$(CC) $(CPPFLAGS) $(ENGINE_CFLAGS) $(CFLAGS) $< $(LIB_STATIC) \
+		$(LDFLAGS) $(ENGINE_RPATH) $(ENGINE_LIBS) -o $@
 
-quick_start: $(QUICK_START)
+quick_start: check-engine $(QUICK_START)
 	@mkdir -p "$(dir $(QUICK_START_DB))"
 	rm -f "$(QUICK_START_DB)"
 	$(QUICK_START) "$(QUICK_START_DB)"
