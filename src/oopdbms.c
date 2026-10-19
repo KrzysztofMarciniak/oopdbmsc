@@ -1,6 +1,5 @@
-#include <oopdbms/oopdbms.h>
-
 #include <errno.h>
+#include <oopdbms/oopdbms.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,18 +17,18 @@
 
 struct oopdbms_database {
         struct database database;
-        char *path;
+        char* path;
 };
 
 struct oopdbms_result {
         enum oopdbms_result_kind kind;
-        char *output;
+        char* output;
         size_t output_size;
 };
 
-static char *copy_string(const char *source) {
+static char* copy_string(const char* source) {
         size_t length;
-        char *copy;
+        char* copy;
 
         if (source == NULL) {
                 return NULL;
@@ -42,8 +41,8 @@ static char *copy_string(const char *source) {
         return copy;
 }
 
-static enum oopdbms_result_kind
-result_kind(const struct analyzer_statement *statement) {
+static enum oopdbms_result_kind result_kind(
+    const struct analyzer_statement* statement) {
         switch (statement->kind) {
                 case ANALYZER_NEW:
                 case ANALYZER_FIND:
@@ -59,7 +58,7 @@ result_kind(const struct analyzer_statement *statement) {
         }
 }
 
-static oopdbms_status capture_begin(int *saved_stdout, FILE **capture) {
+static oopdbms_status capture_begin(int* saved_stdout, FILE** capture) {
         int capture_fd;
 
         if (fflush(stdout) != 0) {
@@ -83,8 +82,8 @@ static oopdbms_status capture_begin(int *saved_stdout, FILE **capture) {
         return OOPDBMS_OK;
 }
 
-static oopdbms_status capture_end(int saved_stdout, FILE *capture,
-                                  char **output, size_t *output_size) {
+static oopdbms_status capture_end(int saved_stdout, FILE* capture,
+                                  char** output, size_t* output_size) {
         long length;
         size_t read_count;
         oopdbms_status status = OOPDBMS_OK;
@@ -119,9 +118,9 @@ static oopdbms_status capture_end(int saved_stdout, FILE *capture,
         return OOPDBMS_OK;
 }
 
-oopdbms_status oopdbms_open(const char *path, unsigned int flags,
-                            oopdbms_database **out_database) {
-        oopdbms_database *handle;
+oopdbms_status oopdbms_open(const char* path, unsigned int flags,
+                            oopdbms_database** out_database) {
+        oopdbms_database* handle;
         bool exists;
 
         if (path == NULL || path[0] == '\0' || out_database == NULL ||
@@ -157,7 +156,7 @@ oopdbms_status oopdbms_open(const char *path, unsigned int flags,
         return OOPDBMS_OK;
 }
 
-void oopdbms_close(oopdbms_database *database) {
+void oopdbms_close(oopdbms_database* database) {
         if (database == NULL) {
                 return;
         }
@@ -166,29 +165,28 @@ void oopdbms_close(oopdbms_database *database) {
         free(database);
 }
 
-oopdbms_status oopdbms_execute(oopdbms_database *database,
-                               const char *command,
-                               oopdbms_result **out_result) {
-        char *arguments[2];
+oopdbms_status oopdbms_execute(oopdbms_database* database, const char* command,
+                               oopdbms_result** out_result) {
+        char* arguments[2];
         struct tokenizer_error tokenizer_error;
         struct analyzer_error analyzer_error;
         struct tokenizer_tokens tokens;
         struct analyzer_statement statement;
         enum EXECUTOR_RESULT execution;
-        oopdbms_result *result;
+        oopdbms_result* result;
         oopdbms_status status;
-        char *output = NULL;
+        char* output       = NULL;
         size_t output_size = 0;
         int saved_stdout;
-        FILE *capture;
+        FILE* capture;
 
         if (database == NULL || command == NULL || out_result == NULL) {
                 return OOPDBMS_ERROR_INVALID_ARGUMENT;
         }
-        *out_result   = NULL;
-        arguments[0]  = "oopdbmsc";
-        arguments[1]  = (char *)command;
-        tokens = i_tokenize(2, arguments, &tokenizer_error);
+        *out_result  = NULL;
+        arguments[0] = "oopdbmsc";
+        arguments[1] = (char*)command;
+        tokens       = i_tokenize(2, arguments, &tokenizer_error);
         if (tokenizer_error.type != TOKENIZER_OK) {
                 return tokenizer_error.type == TOKENIZER_ERROR_OUT_OF_MEMORY
                            ? OOPDBMS_ERROR_OUT_OF_MEMORY
@@ -204,8 +202,8 @@ oopdbms_status oopdbms_execute(oopdbms_database *database,
         status = capture_begin(&saved_stdout, &capture);
         if (status == OOPDBMS_OK) {
                 execution = i_execute(&database->database, &statement);
-                status = capture_end(saved_stdout, capture, &output,
-                                     &output_size);
+                status =
+                    capture_end(saved_stdout, capture, &output, &output_size);
         } else {
                 execution = EXECUTOR_ERROR_STORAGE_FAILED;
         }
@@ -220,19 +218,24 @@ oopdbms_status oopdbms_execute(oopdbms_database *database,
                 i_analyzer_free(&statement);
                 return OOPDBMS_ERROR_OUT_OF_MEMORY;
         }
-        result->kind = result_kind(&statement);
-        result->output = output;
+        result->kind        = result_kind(&statement);
+        result->output      = output;
         result->output_size = output_size;
         i_analyzer_free(&statement);
         *out_result = result;
         return OOPDBMS_OK;
 }
 
-const char *oopdbms_status_string(oopdbms_status status) {
-        static const char *const messages[] = {
-            "success",           "invalid argument", "out of memory",
-            "not found",         "I/O error",        "invalid database",
-            "tokenization error", "parse error",      "execution error"};
+const char* oopdbms_status_string(oopdbms_status status) {
+        static const char* const messages[] = {"success",
+                                               "invalid argument",
+                                               "out of memory",
+                                               "not found",
+                                               "I/O error",
+                                               "invalid database",
+                                               "tokenization error",
+                                               "parse error",
+                                               "execution error"};
 
         if (status < OOPDBMS_OK || status > OOPDBMS_ERROR_EXECUTE) {
                 return "unknown status";
@@ -240,20 +243,19 @@ const char *oopdbms_status_string(oopdbms_status status) {
         return messages[status];
 }
 
-enum oopdbms_result_kind
-oopdbms_result_kind_get(const oopdbms_result *result) {
+enum oopdbms_result_kind oopdbms_result_kind_get(const oopdbms_result* result) {
         return result == NULL ? OOPDBMS_RESULT_NONE : result->kind;
 }
 
-const char *oopdbms_result_output(const oopdbms_result *result) {
+const char* oopdbms_result_output(const oopdbms_result* result) {
         return result == NULL ? NULL : result->output;
 }
 
-size_t oopdbms_result_output_size(const oopdbms_result *result) {
+size_t oopdbms_result_output_size(const oopdbms_result* result) {
         return result == NULL ? 0 : result->output_size;
 }
 
-void oopdbms_result_free(oopdbms_result *result) {
+void oopdbms_result_free(oopdbms_result* result) {
         if (result == NULL) {
                 return;
         }

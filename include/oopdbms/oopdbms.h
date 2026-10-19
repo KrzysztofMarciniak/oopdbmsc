@@ -65,11 +65,11 @@ typedef enum oopdbms_result_kind {
  * already exist. `OOPDBMS_OPEN_READ_ONLY` cannot be combined with CREATE.
  * On success, the caller owns `*out_database` and must close it.
  */
-OOPDBMS_API oopdbms_status oopdbms_open(const char *path, unsigned int flags,
-                                        oopdbms_database **out_database);
+OOPDBMS_API oopdbms_status oopdbms_open(const char* path, unsigned int flags,
+                                        oopdbms_database** out_database);
 
 /** Close a database and release its resources. Accepts NULL. */
-OOPDBMS_API void oopdbms_close(oopdbms_database *database);
+OOPDBMS_API void oopdbms_close(oopdbms_database* database);
 
 /**
  * Execute one complete documented OOPDBMS command.
@@ -79,25 +79,24 @@ OOPDBMS_API void oopdbms_close(oopdbms_database *database);
  * must release it with oopdbms_result_free(). The output is empty for commands
  * that do not print a value.
  */
-OOPDBMS_API oopdbms_status
-oopdbms_execute(oopdbms_database *database, const char *command,
-                oopdbms_result **out_result);
+OOPDBMS_API oopdbms_status oopdbms_execute(oopdbms_database* database,
+                                           const char* command,
+                                           oopdbms_result** out_result);
 
 /** Return a stable, non-NULL explanation for an API status. */
-OOPDBMS_API const char *oopdbms_status_string(oopdbms_status status);
+OOPDBMS_API const char* oopdbms_status_string(oopdbms_status status);
 
 /** Return the category of output in a result. */
 OOPDBMS_API oopdbms_result_kind
-oopdbms_result_kind_get(const oopdbms_result *result);
+oopdbms_result_kind_get(const oopdbms_result* result);
 
 /** Return the NUL-terminated command output, or NULL for a NULL result. */
-OOPDBMS_API const char *oopdbms_result_output(const oopdbms_result *result);
+OOPDBMS_API const char* oopdbms_result_output(const oopdbms_result* result);
 
 /** Return the number of output bytes, excluding the terminating NUL. */
-OOPDBMS_API size_t
-oopdbms_result_output_size(const oopdbms_result *result);
+OOPDBMS_API size_t oopdbms_result_output_size(const oopdbms_result* result);
 
 /** Release a result returned by oopdbms_execute(). Accepts NULL. */
-OOPDBMS_API void oopdbms_result_free(oopdbms_result *result);
+OOPDBMS_API void oopdbms_result_free(oopdbms_result* result);
 
 #endif

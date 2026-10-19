@@ -288,6 +288,7 @@ Ownership rules:
 ```sh
 make          # Build liboopdbmsc.a and liboopdbmsc.so
 make test     # Run the API suite against both artifacts
+make format   # Format C sources and headers with clang-format
 make clean    # Remove generated root build artifacts
 ```
 

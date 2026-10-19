@@ -4,6 +4,7 @@ INSTALL ?= install
 PREFIX ?= /usr/local
 DESTDIR ?=
 PKG_CONFIG ?= pkg-config
+CLANG_FORMAT ?= clang-format
 
 BUILD_DIR := build
 LIB_DIR := $(BUILD_DIR)/lib
@@ -28,12 +29,14 @@ ENGINE_RPATH = -Wl,-rpath,$(ENGINE_LIBDIR)
 
 SOURCES := src/oopdbms.c
 OBJECTS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
+FORMAT_FILES := $(shell find src tests examples include -type f \
+		\( -name '*.c' -o -name '*.h' \))
 STATIC_TEST := $(TEST_DIR)/library-static-test
 SHARED_TEST := $(TEST_DIR)/library-shared-test
 QUICK_START := $(EXAMPLE_DIR)/quick_start
 QUICK_START_DB ?= $(BUILD_DIR)/quick-start.oopdb
 
-.PHONY: all check-engine clean test quick_start install uninstall
+.PHONY: all check-engine clean format test quick_start install uninstall
 
 all: check-engine $(LIB_STATIC) $(LIB_SHARED) $(LIB_LINK)
 
@@ -42,6 +45,9 @@ check-engine:
 		echo "oopdbms-engine is required; install OOPDBMS with 'make install' first" >&2; \
 		exit 1; \
 	}
+
+format:
+	$(CLANG_FORMAT) -i $(FORMAT_FILES)
 
 $(LIB_STATIC): $(OBJECTS)
 	@mkdir -p $(@D)
