@@ -58,45 +58,19 @@ static enum oopdbms_result_kind result_kind(
         }
 }
 
-static oopdbms_status capture_begin(int* saved_stdout, FILE** capture) {
-        int capture_fd;
-
-        if (fflush(stdout) != 0) {
-                return OOPDBMS_ERROR_IO;
-        }
-        *saved_stdout = dup(fileno(stdout));
-        if (*saved_stdout < 0) {
-                return OOPDBMS_ERROR_IO;
-        }
+static oopdbms_status capture_begin(FILE** capture) {
         *capture = tmpfile();
-        if (*capture == NULL) {
-                close(*saved_stdout);
-                return OOPDBMS_ERROR_IO;
-        }
-        capture_fd = fileno(*capture);
-        if (dup2(capture_fd, fileno(stdout)) < 0) {
-                fclose(*capture);
-                close(*saved_stdout);
-                return OOPDBMS_ERROR_IO;
-        }
-        return OOPDBMS_OK;
+        return *capture == NULL ? OOPDBMS_ERROR_IO : OOPDBMS_OK;
 }
 
-static oopdbms_status capture_end(int saved_stdout, FILE* capture,
-                                  char** output, size_t* output_size) {
+static oopdbms_status capture_end(FILE* capture, char** output,
+                                  size_t* output_size) {
         long length;
         size_t read_count;
-        oopdbms_status status = OOPDBMS_OK;
-        int flush_result;
-        int restore_result;
+        bool read_failed;
+        int close_result;
 
-        flush_result   = fflush(stdout);
-        restore_result = dup2(saved_stdout, fileno(stdout));
-        if (flush_result != 0 || restore_result < 0) {
-                status = OOPDBMS_ERROR_IO;
-        }
-        close(saved_stdout);
-        if (status != OOPDBMS_OK || fseek(capture, 0, SEEK_END) != 0 ||
+        if (fflush(capture) != 0 || fseek(capture, 0, SEEK_END) != 0 ||
             (length = ftell(capture)) < 0 || fseek(capture, 0, SEEK_SET) != 0) {
                 fclose(capture);
                 return OOPDBMS_ERROR_IO;
@@ -106,9 +80,10 @@ static oopdbms_status capture_end(int saved_stdout, FILE* capture,
                 fclose(capture);
                 return OOPDBMS_ERROR_OUT_OF_MEMORY;
         }
-        read_count = fread(*output, 1, (size_t)length, capture);
-        fclose(capture);
-        if (read_count != (size_t)length) {
+        read_count   = fread(*output, 1, (size_t)length, capture);
+        read_failed  = read_count != (size_t)length || ferror(capture);
+        close_result = fclose(capture);
+        if (read_failed || close_result != 0) {
                 free(*output);
                 *output = NULL;
                 return OOPDBMS_ERROR_IO;
@@ -123,14 +98,17 @@ oopdbms_status oopdbms_open(const char* path, unsigned int flags,
         oopdbms_database* handle;
         bool exists;
 
-        if (path == NULL || path[0] == '\0' || out_database == NULL ||
+        if (out_database == NULL) {
+                return OOPDBMS_ERROR_INVALID_ARGUMENT;
+        }
+        *out_database = NULL;
+        if (path == NULL || path[0] == '\0' ||
             (flags & ~(OOPDBMS_OPEN_CREATE | OOPDBMS_OPEN_READ_ONLY)) != 0 ||
             ((flags & OOPDBMS_OPEN_CREATE) != 0 &&
              (flags & OOPDBMS_OPEN_READ_ONLY) != 0)) {
                 return OOPDBMS_ERROR_INVALID_ARGUMENT;
         }
-        *out_database = NULL;
-        exists        = access(path, F_OK) == 0;
+        exists = access(path, F_OK) == 0;
         if (!exists && errno != ENOENT) {
                 return OOPDBMS_ERROR_IO;
         }
@@ -177,13 +155,15 @@ oopdbms_status oopdbms_execute(oopdbms_database* database, const char* command,
         oopdbms_status status;
         char* output       = NULL;
         size_t output_size = 0;
-        int saved_stdout;
         FILE* capture;
 
-        if (database == NULL || command == NULL || out_result == NULL) {
+        if (out_result == NULL) {
                 return OOPDBMS_ERROR_INVALID_ARGUMENT;
         }
-        *out_result  = NULL;
+        *out_result = NULL;
+        if (database == NULL || command == NULL) {
+                return OOPDBMS_ERROR_INVALID_ARGUMENT;
+        }
         arguments[0] = "oopdbmsc";
         arguments[1] = (char*)command;
         tokens       = i_tokenize(2, arguments, &tokenizer_error);
@@ -199,18 +179,21 @@ oopdbms_status oopdbms_execute(oopdbms_database* database, const char* command,
                            ? OOPDBMS_ERROR_OUT_OF_MEMORY
                            : OOPDBMS_ERROR_PARSE;
         }
-        status = capture_begin(&saved_stdout, &capture);
-        if (status == OOPDBMS_OK) {
-                execution = i_execute(&database->database, &statement);
-                status =
-                    capture_end(saved_stdout, capture, &output, &output_size);
-        } else {
-                execution = EXECUTOR_ERROR_STORAGE_FAILED;
+        status = capture_begin(&capture);
+        if (status != OOPDBMS_OK) {
+                i_analyzer_free(&statement);
+                return status;
         }
+        execution = i_execute_to(&database->database, &statement, capture);
+        status    = capture_end(capture, &output, &output_size);
         if (status != OOPDBMS_OK || execution != EXECUTOR_OK) {
                 free(output);
                 i_analyzer_free(&statement);
-                return status != OOPDBMS_OK ? status : OOPDBMS_ERROR_EXECUTE;
+                return status != OOPDBMS_OK
+                           ? status
+                           : (execution == EXECUTOR_ERROR_OUTPUT_FAILED
+                                  ? OOPDBMS_ERROR_IO
+                                  : OOPDBMS_ERROR_EXECUTE);
         }
         result = calloc(1, sizeof *result);
         if (result == NULL) {

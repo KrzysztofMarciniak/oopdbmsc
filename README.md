@@ -6,9 +6,10 @@ NoSQL database. Link the library into a C program, open an `.oopdb` file, and
 execute OOPDBMS commands directly—no database server or `oopdbms` subprocess
 is required.
 
-## Integration Example
+## Example application
 
-**An example usage of this tool:** [example-login-c-stack](https://github.com/KrzysztofMarciniak/example-login-c-stack).
+See [example-login-c-stack](https://github.com/KrzysztofMarciniak/example-login-c-stack)
+for an application that embeds OOPDBMS through this API.
 
 ## Start here
 
@@ -35,7 +36,7 @@ make quick_start QUICK_START_DB=/tmp/my-demo.oopdb
 
 ## Add it to a C program
 
-`oopdbmsc` links to the installed OOPDBMS engine library. Build and install
+`oopdbmsc` links to `oopdbms-engine` 0.2.0 or newer. Build and install
 OOPDBMS first:
 
 ```sh
@@ -158,97 +159,12 @@ Use `oopdbms_result_kind_get(result)` when output category matters. The output
 format is text intended for display; keep the result alive while reading it,
 then call `oopdbms_result_free(result)`.
 
-## Command reference
+## Commands
 
-Use these commands as the `command` argument of `oopdbms_execute`.
-
-### Define and change schemas
-
-```text
-CREATE CLASS <name> [EXTENDS <class>] [IMPLEMENTS <interface>[, ...]] (<field> <type>[, ...])
-DROP CLASS <name>
-ALTER CLASS <name> ADD FIELD <field> <type>
-ALTER CLASS <name> DROP FIELD <field>
-ALTER CLASS <name> RENAME FIELD <old> <new>
-ALTER CLASS <name> RENAME <new>
-ALTER CLASS <name> EXTENDS <class>
-ALTER CLASS <name> IMPLEMENTS <interface>
-
-CREATE INTERFACE <name> (<field> <type>[, ...])
-DROP INTERFACE <name>
-```
-
-Example:
-
-```c
-run(database, "CREATE INTERFACE Named (name text)");
-run(database, "CREATE CLASS Person IMPLEMENTS Named (name text, age integer)");
-run(database, "CREATE CLASS Employee EXTENDS Person (salary float)");
-```
-
-### Store and retrieve objects
-
-```text
-NEW <class> (<field> = <value>[, ...])
-FIND <class> [WHERE <condition>]
-SET <class> <id> (<field> = <value>[, ...])
-DELETE <class> <id>
-```
-
-Example:
-
-```c
-run(database, "NEW Person (name = \"Ada Lovelace\", age = 36)");
-run(database, "FIND Person WHERE age >= 18");
-run(database, "SET Person 1 (age = 37)");
-run(database, "DELETE Person 1");
-```
-
-### Define and call functions
-
-```text
-CREATE FUNCTION <class>.<name> (<arg> <type>[, ...]) RETURNS <type> AS <expression>
-DROP FUNCTION <class>.<name>
-CALL <class>.<name> (<value>[, ...]) ON <id>
-```
-
-Example:
-
-```c
-run(database,
-    "CREATE FUNCTION Person.years_until (target integer) "
-    "RETURNS integer AS target - age");
-run(database, "CALL Person.years_until (100) ON 1");
-```
-
-### Inspect a database
-
-```text
-LIST CLASSES
-LIST INTERFACES
-DESCRIBE <class>
-```
-
-Example:
-
-```c
-run(database, "DESCRIBE Person");
-run(database, "LIST CLASSES");
-run(database, "LIST INTERFACES");
-```
-
-### Values and types
-
-| Type | Command value example |
-| --- | --- |
-| `integer` | `36` |
-| `float` | `19.5` |
-| `text` | `"Ada Lovelace"` |
-| `bool` | `true` or `false` |
-| `pointer <class>` | `Person.1` |
-
-A `pointer <class>` stores a reference to an object of that class. For
-example, after creating `Person.1`, a `Book` can use `author = Person.1`.
+Commands use the same syntax as the OOPDBMS command-line client. The adapter
+accepts a complete command string and returns its output; it does not launch
+the CLI. See the [OOPDBMS command reference](https://github.com/KrzysztofMarciniak/oopdbms#commands)
+for supported commands, types, and expression syntax.
 
 ## Errors and ownership
 
@@ -260,7 +176,7 @@ display string with `oopdbms_status_string(status)`.
 | `OOPDBMS_ERROR_INVALID_ARGUMENT` | A required pointer, path, or flag combination is invalid. |
 | `OOPDBMS_ERROR_OUT_OF_MEMORY` | Allocation failed. |
 | `OOPDBMS_ERROR_NOT_FOUND` | An existing database was requested but the path is absent. |
-| `OOPDBMS_ERROR_IO` | A file or result-capture operation failed. |
+| `OOPDBMS_ERROR_IO` | A file or command-output operation failed. |
 | `OOPDBMS_ERROR_DATABASE` | The existing file is not a valid supported OOPDBMS database. |
 | `OOPDBMS_ERROR_TOKENIZE` / `OOPDBMS_ERROR_PARSE` | The command string is not valid OOPDBMS syntax. |
 | `OOPDBMS_ERROR_EXECUTE` | A syntactically valid command could not be applied. |
@@ -278,8 +194,9 @@ Ownership rules:
 
 - The current build targets POSIX C99 systems.
 - A database handle is not safe for simultaneous use from multiple threads.
-- Calls to `oopdbms_execute` must be serialized within a process because the
-  embedded engine captures command output through the process stdout stream.
+- The API does not promise thread safety across separate database handles.
+- Command output is collected through a per-call stream and does not redirect
+  the process's standard output.
 - There is no server, connection string, or network listener: the `path`
   passed to `oopdbms_open` is the database.
 
@@ -289,6 +206,7 @@ Ownership rules:
 make          # Build liboopdbmsc.a and liboopdbmsc.so
 make test     # Run the API suite against both artifacts
 make format   # Format C sources and headers with clang-format
+make format-check # Check formatting without modifying files
 make clean    # Remove generated root build artifacts
 ```
 

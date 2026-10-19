@@ -36,18 +36,22 @@ SHARED_TEST := $(TEST_DIR)/library-shared-test
 QUICK_START := $(EXAMPLE_DIR)/quick_start
 QUICK_START_DB ?= $(BUILD_DIR)/quick-start.oopdb
 
-.PHONY: all check-engine clean format test quick_start install uninstall
+.PHONY: all check-engine clean format format-check test quick_start install \
+	uninstall
 
 all: check-engine $(LIB_STATIC) $(LIB_SHARED) $(LIB_LINK)
 
 check-engine:
-	@$(PKG_CONFIG) --exists oopdbms-engine || { \
-		echo "oopdbms-engine is required; install OOPDBMS with 'make install' first" >&2; \
+	@$(PKG_CONFIG) --atleast-version=0.2.0 oopdbms-engine || { \
+		echo "oopdbms-engine >= 0.2.0 is required; install OOPDBMS with 'make install' first" >&2; \
 		exit 1; \
 	}
 
 format:
 	$(CLANG_FORMAT) -i $(FORMAT_FILES)
+
+format-check:
+	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_FILES)
 
 $(LIB_STATIC): $(OBJECTS)
 	@mkdir -p $(@D)

@@ -21,8 +21,8 @@
  * Opaque database handle. Each handle owns one open database file.
  *
  * Handles are not safe for simultaneous use by multiple threads. A process
- * must also serialize calls to oopdbms_execute because result output is
- * captured from the embedded engine's stdout stream.
+ * does not have a thread-safety guarantee for calls across separate handles.
+ * Command output is collected per call without redirecting process stdout.
  */
 typedef struct oopdbms_database oopdbms_database;
 
@@ -63,7 +63,8 @@ typedef enum oopdbms_result_kind {
  *
  * `OOPDBMS_OPEN_CREATE` creates a new database only if `path` does not
  * already exist. `OOPDBMS_OPEN_READ_ONLY` cannot be combined with CREATE.
- * On success, the caller owns `*out_database` and must close it.
+ * If `out_database` is non-NULL, it is set to NULL before validation. On
+ * success, the caller owns `*out_database` and must close it.
  */
 OOPDBMS_API oopdbms_status oopdbms_open(const char* path, unsigned int flags,
                                         oopdbms_database** out_database);
@@ -77,7 +78,8 @@ OOPDBMS_API void oopdbms_close(oopdbms_database* database);
  * The command string is parsed with the same quoting and syntax rules as the
  * upstream command-line client. On success, the caller owns `*out_result` and
  * must release it with oopdbms_result_free(). The output is empty for commands
- * that do not print a value.
+ * that do not print a value. If `out_result` is non-NULL, it is set to NULL
+ * before validation.
  */
 OOPDBMS_API oopdbms_status oopdbms_execute(oopdbms_database* database,
                                            const char* command,
